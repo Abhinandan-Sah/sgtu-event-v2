@@ -21,20 +21,15 @@ import { query } from '../config/db.js';
  */
 const login = async (req, res, next) => {
   try {
-    const { email, registration_no, password } = req.body;
+    const { registration_no, password } = req.body;
 
-    // Must provide either email OR registration_no, plus password
-    if ((!email && !registration_no) || !password) {
-      return errorResponse(res, 'Email or registration number, and password are required', 400);
+    // Registration number and password are required
+    if (!registration_no || !password) {
+      return errorResponse(res, 'Registration number and password are required', 400);
     }
 
-    // Find student by email OR registration number
-    let student;
-    if (email) {
-      student = await Student.findByEmail(email, query);
-    } else {
-      student = await Student.findByRegistrationNo(registration_no, query);
-    }
+    // Find student by registration number only
+    const student = await Student.findByRegistrationNo(registration_no, query);
 
     if (!student) {
       return errorResponse(res, 'Invalid credentials', 401);
@@ -46,11 +41,19 @@ const login = async (req, res, next) => {
       return errorResponse(res, 'Invalid credentials', 401);
     }
 
+    // Check if password reset is required (first-time login or admin-forced reset)
+    if (student.password_reset_required) {
+      return successResponse(res, {
+        requires_password_reset: true,
+        registration_no: student.registration_no,
+        message: 'Please reset your password to continue'
+      }, 'Password reset required');
+    }
+
     const token = jwt.sign(
       { 
         id: student.id, 
         registration_no: student.registration_no, 
-        email: student.email,
         role: student.role 
       },
       process.env.JWT_SECRET,
@@ -68,73 +71,11 @@ const login = async (req, res, next) => {
         email: student.email,
         registration_no: student.registration_no,
         school_name: student.school_name,
-        phone: student.phone
+        phone: student.phone,
+        program_name: student.program_name,
+        batch: student.batch
       }
     }, 'Login successful');
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * Student registration
- * @route POST /api/student/register
- */
-const register = async (req, res, next) => {
-  try {
-    const { full_name, email, password, registration_no, school_id } = req.body;
-
-    if (!full_name || !email || !password || !registration_no || !school_id) {
-      return errorResponse(res, 'All fields are required', 400);
-    }
-
-    // Check if student already exists
-    const existingByReg = await Student.findByRegistrationNo(registration_no, query);
-    if (existingByReg) {
-      return errorResponse(res, 'Registration number already exists', 409);
-    }
-
-    const existingByEmail = await Student.findByEmail(email, query);
-    if (existingByEmail) {
-      return errorResponse(res, 'Email already exists', 409);
-    }
-
-    // Create student using model method (handles password hashing and QR generation)
-    const studentData = {
-      full_name,
-      email,
-      password,
-      registration_no,
-      school_id
-    };
-
-    const newStudent = await Student.create(studentData, query);
-
-    // Auto-login after registration
-    const token = jwt.sign(
-      { 
-        id: newStudent.id, 
-        registration_no: newStudent.registration_no, 
-        email: newStudent.email,
-        role: newStudent.role 
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: '24h' }
-    );
-
-    // Set secure HTTP-Only cookie
-    setAuthCookie(res, token);
-
-    return successResponse(res, {
-      token,
-      student: {
-        id: newStudent.id,
-        full_name: newStudent.full_name,
-        email: newStudent.email,
-        registration_no: newStudent.registration_no,
-        school_name: newStudent.school_name
-      }
-    }, 'Registration successful', 201);
   } catch (error) {
     next(error);
   }
@@ -656,9 +597,141 @@ const getMySchoolRanking = async (req, res, next) => {
   }
 };
 
+/**
+ * Verify reset credentials - Step 1 of password reset
+ * Validates DOB and pincode before allowing password reset
+ * @route POST /api/student/verify-reset-credentials
+ */
+const verifyResetCredentials = async (req, res, next) => {
+  try {
+    const { registration_no, date_of_birth, pincode } = req.body;
+
+    // Validate required fields
+    if (!registration_no || !date_of_birth || !pincode) {
+      return errorResponse(res, 'Registration number, date of birth, and pincode are required', 400);
+    }
+
+    // Validate pincode format using model validation method
+    if (!Student.isValidPincode(pincode)) {
+      return errorResponse(res, 'Pincode must be exactly 6 digits', 400);
+    }
+
+    // Validate date of birth format and age using model validation method
+    if (!Student.isValidDateOfBirth(date_of_birth)) {
+      return errorResponse(res, 'Invalid date of birth format or age requirement not met', 400);
+    }
+
+    // Verify credentials match
+    const student = await Student.verifyResetCredentials(
+      registration_no,
+      date_of_birth,
+      pincode,
+      query
+    );
+
+    if (!student) {
+      return errorResponse(res, 'Invalid credentials. Please check your details.', 401);
+    }
+
+    // Generate temporary reset token (valid for 10 minutes)
+    const resetToken = jwt.sign(
+      { 
+        id: student.id, 
+        registration_no: student.registration_no,
+        purpose: 'password_reset' 
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: '10m' }
+    );
+
+    return successResponse(res, {
+      reset_token: resetToken,
+      registration_no: student.registration_no,
+      full_name: student.full_name,
+      expires_in: '10 minutes'
+    }, 'Credentials verified successfully');
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Reset password - Step 2 of password reset
+ * Updates password using the reset token
+ * @route POST /api/student/reset-password
+ */
+const resetPassword = async (req, res, next) => {
+  try {
+    const { reset_token, new_password, confirm_password } = req.body;
+
+    // Validate required fields
+    if (!reset_token || !new_password || !confirm_password) {
+      return errorResponse(res, 'Reset token and passwords are required', 400);
+    }
+
+    // Validate passwords match
+    if (new_password !== confirm_password) {
+      return errorResponse(res, 'Passwords do not match', 400);
+    }
+
+    // Validate password strength using model validation method
+    if (!Student.isValidPassword(new_password)) {
+      return errorResponse(res, 'Password must be at least 8 characters with at least one letter and one number', 400);
+    }
+
+    // Verify reset token
+    let decoded;
+    try {
+      decoded = jwt.verify(reset_token, process.env.JWT_SECRET);
+      
+      if (decoded.purpose !== 'password_reset') {
+        return errorResponse(res, 'Invalid reset token', 401);
+      }
+    } catch (err) {
+      if (err.name === 'TokenExpiredError') {
+        return errorResponse(res, 'Reset token has expired. Please verify credentials again.', 401);
+      }
+      return errorResponse(res, 'Invalid reset token', 401);
+    }
+
+    // Reset password
+    const updatedStudent = await Student.resetPassword(decoded.id, new_password, query);
+
+    if (!updatedStudent) {
+      return errorResponse(res, 'Failed to reset password', 500);
+    }
+
+    // Generate new auth token
+    const authToken = jwt.sign(
+      { 
+        id: updatedStudent.id, 
+        registration_no: updatedStudent.registration_no, 
+        email: updatedStudent.email,
+        role: updatedStudent.role 
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    // Set secure HTTP-Only cookie
+    setAuthCookie(res, authToken);
+
+    return successResponse(res, {
+      token: authToken,
+      student: {
+        id: updatedStudent.id,
+        full_name: updatedStudent.full_name,
+        registration_no: updatedStudent.registration_no,
+        email: updatedStudent.email
+      }
+    }, 'Password reset successful. You are now logged in.');
+  } catch (error) {
+    next(error);
+  }
+};
+
 export default {
   login,
-  register,
   logout,
   getProfile,
   getQRCode,
@@ -669,5 +742,7 @@ export default {
   getMyVisits,
   getMySchoolStalls,
   submitSchoolRanking,
-  getMySchoolRanking
+  getMySchoolRanking,
+  verifyResetCredentials,
+  resetPassword
 };

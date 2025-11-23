@@ -22,6 +22,13 @@ class StudentModel {
     this.total_active_duration_minutes = data.total_active_duration_minutes;
     this.created_at = data.created_at;
     this.updated_at = data.updated_at;
+    // New authentication fields
+    this.date_of_birth = data.date_of_birth;
+    this.address = data.address;
+    this.pincode = data.pincode;
+    this.program_name = data.program_name;
+    this.batch = data.batch;
+    this.password_reset_required = data.password_reset_required;
     // Additional fields from joins
     this.school_name = data.school_name;
   }
@@ -85,10 +92,13 @@ class StudentModel {
     const query = `
       INSERT INTO students (
         registration_no, email, password_hash, full_name, school_id, 
-        phone, role, is_inside_event, total_scan_count, 
-        feedback_count, has_completed_ranking, created_at, updated_at
+        phone, date_of_birth, pincode, address, program_name, batch,
+        role, is_inside_event, total_scan_count, 
+        feedback_count, has_completed_ranking, 
+        password_reset_required,
+        created_at, updated_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, 'STUDENT', false, 0, 0, false, NOW(), NOW())
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'STUDENT', false, 0, 0, false, true, NOW(), NOW())
       RETURNING *
     `;
     const results = await sql(query, [
@@ -97,7 +107,12 @@ class StudentModel {
       hashedPassword,
       data.full_name,
       data.school_id,
-      data.phone || null
+      data.phone || null,
+      data.date_of_birth,
+      data.pincode,
+      data.address || null,
+      data.program_name || null,
+      data.batch || null
     ]);
     
     const student = new StudentModel(results[0]);
@@ -340,6 +355,84 @@ class StudentModel {
     const results = await sql(query);
     return results[0];
   }
+
+  // ==================== Validation Methods ====================
+  
+  /**
+   * Validate pincode format (6 digits)
+   * @param {string} pincode - Pincode to validate
+   * @returns {boolean} - True if valid
+   */
+  static isValidPincode(pincode) {
+    return /^[0-9]{6}$/.test(pincode);
+  }
+
+  /**
+   * Validate date of birth (must be at least 15 years old)
+   * @param {string} dateOfBirth - Date of birth (YYYY-MM-DD format)
+   * @returns {boolean} - True if valid
+   */
+  static isValidDateOfBirth(dateOfBirth) {
+    const dob = new Date(dateOfBirth);
+    const today = new Date();
+    const fifteenYearsAgo = new Date(today.getFullYear() - 15, today.getMonth(), today.getDate());
+    return dob <= fifteenYearsAgo && dob >= new Date('1990-01-01');
+  }
+
+  /**
+   * Validate password strength (min 8 chars, at least 1 letter and 1 number)
+   * @param {string} password - Password to validate
+   * @returns {boolean} - True if valid
+   */
+  static isValidPassword(password) {
+    return password.length >= 8 && /[a-zA-Z]/.test(password) && /[0-9]/.test(password);
+  }
+
+  // ==================== Password Reset Methods ====================
+  
+  /**
+   * Verify student credentials for password reset
+   * @param {string} registrationNo - Student registration number
+   * @param {string} dateOfBirth - Date of birth (YYYY-MM-DD format)
+   * @param {string} pincode - 6-digit pincode
+   * @param {Function} sql - Database query function
+   * @returns {StudentModel|null} - Student if credentials match, null otherwise
+   */
+  static async verifyResetCredentials(registrationNo, dateOfBirth, pincode, sql) {
+    const query = `
+      SELECT s.*, sc.school_name
+      FROM students s
+      LEFT JOIN schools sc ON s.school_id = sc.id
+      WHERE s.registration_no = $1
+        AND s.date_of_birth = $2
+        AND s.pincode = $3
+      LIMIT 1
+    `;
+    const results = await sql(query, [registrationNo, dateOfBirth, pincode]);
+    return results.length > 0 ? new StudentModel(results[0]) : null;
+  }
+
+  /**
+   * Reset student password and clear first-time login flags
+   * @param {number} studentId - Student ID
+   * @param {string} newPassword - New plain text password
+   * @param {Function} sql - Database query function
+   * @returns {StudentModel|null} - Updated student
+   */
+  static async resetPassword(studentId, newPassword, sql) {
+    const hashedPassword = await StudentModel.hashPassword(newPassword);
+    const query = `
+      UPDATE students
+      SET password_hash = $1,
+          password_reset_required = false,
+          updated_at = NOW()
+      WHERE id = $2
+      RETURNING *
+    `;
+    const results = await sql(query, [hashedPassword, studentId]);
+    return results.length > 0 ? new StudentModel(results[0]) : null;
+  }
+
 }
 
 export default StudentModel;

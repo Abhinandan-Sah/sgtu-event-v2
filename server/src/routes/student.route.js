@@ -11,7 +11,8 @@ import { authenticateToken, authorizeRoles } from '../middleware/auth.js';
 
 // 🔓 Public routes (no authentication)
 router.post('/login', studentController.login);
-router.post('/register', studentController.register);
+router.post('/verify-reset-credentials', studentController.verifyResetCredentials);
+router.post('/reset-password', studentController.resetPassword);
 
 // 🔒 Apply authentication + STUDENT authorization to all routes below
 router.use(authenticateToken);

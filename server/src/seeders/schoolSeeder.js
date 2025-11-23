@@ -4,23 +4,43 @@ import { query } from '../config/db.js';
 const schools = [
   {
     school_name: 'School of Computing Sciences and Engineering',
-    description: 'Computer Science, AI, Cybersecurity, Software Engineering programs. Located in Block A'
+    description: 'BTech CSE, BTech IT, BCA, MCA programs. Located in Block A'
   },
   {
-    school_name: 'School of Engineering',
-    description: 'Mechanical, Electrical, Civil Engineering programs. Located in Block B'
+    school_name: 'School of Civil Engineering',
+    description: 'BTech Civil Engineering, Diploma in Civil Engineering programs. Located in Block B1'
+  },
+  {
+    school_name: 'School of Mechanical Engineering',
+    description: 'BTech Mechanical Engineering, Diploma in Mechanical Engineering programs. Located in Block B2'
+  },
+  {
+    school_name: 'School of Electrical Engineering',
+    description: 'BTech Electrical Engineering, Diploma in Electrical Engineering programs. Located in Block B3'
+  },
+  {
+    school_name: 'School of Biotechnology',
+    description: 'BTech Biotechnology, MSc Biotechnology programs. Located in Block B4'
   },
   {
     school_name: 'School of Management',
-    description: 'Business Administration, Marketing, Finance, HR programs. Located in Block C'
+    description: 'MBA, BBA, B.Com programs. Located in Block C'
   },
   {
     school_name: 'School of Applied Sciences',
-    description: 'Physics, Chemistry, Mathematics, Biotechnology programs. Located in Block D'
+    description: 'BSc Physics, Chemistry, Mathematics, Biotechnology, Agriculture programs. Located in Block D'
   },
   {
     school_name: 'School of Pharmacy',
-    description: 'Pharmaceutical Sciences, Pharmacology, Drug Development programs. Located in Block E'
+    description: 'B.Pharm, D.Pharm, M.Pharm programs. Located in Block E'
+  },
+  {
+    school_name: 'School of Fashion Designing',
+    description: 'Fashion Design, Textile Design, Fashion Technology programs. Located in Block F'
+  },
+  {
+    school_name: 'School of Physical Education',
+    description: 'Bachelor of Physical Education, Sports Management, Sports Science programs. Located in Block G'
   }
 ];
 

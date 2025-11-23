@@ -1,0 +1,365 @@
+// Student Model - Main user role for event participation
+import bcrypt from 'bcryptjs';
+import QRCodeService from '../services/qrCode.js';
+
+class StudentModel {
+  constructor(data) {
+    this.id = data.id;
+    this.registration_no = data.registration_no;
+    this.email = data.email;
+    this.password_hash = data.password_hash;
+    this.full_name = data.full_name;
+    this.school_id = data.school_id;
+    this.phone = data.phone;
+    this.role = data.role;
+    this.is_inside_event = data.is_inside_event;
+    this.total_scan_count = data.total_scan_count;
+    this.feedback_count = data.feedback_count;
+    this.has_completed_ranking = data.has_completed_ranking;
+    this.selected_category = data.selected_category;
+    this.qr_code_token = data.qr_code_token;
+    this.last_checkin_at = data.last_checkin_at;
+    this.last_checkout_at = data.last_checkout_at;
+    this.total_active_duration_minutes = data.total_active_duration_minutes;
+    this.created_at = data.created_at;
+    this.updated_at = data.updated_at;
+    // Additional fields from joins
+    this.school_name = data.school_name;
+  }
+
+  // Hash password before saving
+  static async hashPassword(password) {
+    return await bcrypt.hash(password, 12);
+  }
+
+  // Compare password for login
+  async comparePassword(password) {
+    return await bcrypt.compare(password, this.password_hash);
+  }
+
+  // Find by registration number
+  static async findByRegistrationNo(registrationNo, sql) {
+    const query = `
+      SELECT s.*, sc.school_name
+      FROM students s
+      LEFT JOIN schools sc ON s.school_id = sc.id
+      WHERE s.registration_no = $1
+      LIMIT 1
+    `;
+    const results = await sql(query, [registrationNo]);
+    return results.length > 0 ? new StudentModel(results[0]) : null;
+  }
+
+  // Find by email
+  static async findByEmail(email, sql) {
+    const query = `
+      SELECT s.*, sc.school_name
+      FROM students s
+      LEFT JOIN schools sc ON s.school_id = sc.id
+      WHERE s.email = $1
+      LIMIT 1
+    `;
+    const results = await sql(query, [email]);
+    return results.length > 0 ? new StudentModel(results[0]) : null;
+  }
+
+  // Find by ID
+  static async findById(id, sql) {
+    const query = `
+      SELECT s.*, sc.school_name
+      FROM students s
+      LEFT JOIN schools sc ON s.school_id = sc.id
+      WHERE s.id = $1
+      LIMIT 1
+    `;
+    const results = await sql(query, [id]);
+    return results.length > 0 ? new StudentModel(results[0]) : null;
+  }
+
+  // Find by QR token (for volunteer scanning)
+  static async findByQRToken(token, sql) {
+    const query = `
+      SELECT s.*, sc.school_name
+      FROM students s
+      LEFT JOIN schools sc ON s.school_id = sc.id
+      WHERE s.qr_code_token = $1
+      LIMIT 1
+    `;
+    const results = await sql(query, [token]);
+    return results.length > 0 ? new StudentModel(results[0]) : null;
+  }
+
+  // Create new student
+  static async create(data, sql) {
+    const hashedPassword = await StudentModel.hashPassword(data.password);
+    
+    // First insert student without QR
+    const query = `
+      INSERT INTO students (
+        registration_no, email, password_hash, full_name, school_id, 
+        phone, role, is_inside_event, total_scan_count, 
+        feedback_count, has_completed_ranking, created_at, updated_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, 'STUDENT', false, 0, 0, false, NOW(), NOW())
+      RETURNING *
+    `;
+    const results = await sql(query, [
+      data.registration_no,
+      data.email,
+      hashedPassword,
+      data.full_name,
+      data.school_id,
+      data.phone || null
+    ]);
+    
+    const student = new StudentModel(results[0]);
+    
+    // Generate and save QR code automatically
+    try {
+      const qrToken = QRCodeService.generateStudentQRToken(student);
+      await sql`UPDATE students SET qr_code_token = ${qrToken} WHERE id = ${student.id}`;
+      student.qr_code_token = qrToken;
+    } catch (qrError) {
+      console.error('QR generation failed for student:', student.id, qrError);
+      // Continue without QR - can be generated later
+    }
+    
+    return student;
+  }
+
+  // Bulk insert students (for Excel import - 11k students)
+  static async bulkCreate(students, sql) {
+    if (!students || students.length === 0) return [];
+    
+    const batchSize = 500; // Insert 500 at a time for performance
+    const results = [];
+    
+    for (let i = 0; i < students.length; i += batchSize) {
+      const batch = students.slice(i, i + batchSize);
+      const values = [];
+      const placeholders = [];
+      
+      for (let j = 0; j < batch.length; j++) {
+        const offset = j * 7;
+        placeholders.push(
+          `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7})`
+        );
+        const hashedPassword = await StudentModel.hashPassword(batch[j].password);
+        values.push(
+          batch[j].registration_no,
+          batch[j].email,
+          hashedPassword,
+          batch[j].full_name,
+          batch[j].school_id,
+          batch[j].phone || null,
+          batch[j].qr_code_token
+        );
+      }
+
+      const query = `
+        INSERT INTO students (
+          registration_no, email, password_hash, full_name, school_id, phone, qr_code_token
+        )
+        VALUES ${placeholders.join(', ')}
+        ON CONFLICT (registration_no) DO NOTHING
+        RETURNING *
+      `;
+      
+      const batchResults = await sql(query, values);
+      results.push(...batchResults);
+    }
+    
+    return results.map(row => new StudentModel(row));
+  }
+
+  // Update student profile
+  static async updateProfile(id, data, sql) {
+    const query = `
+      UPDATE students
+      SET full_name = COALESCE($1, full_name),
+          email = COALESCE($2, email),
+          phone = COALESCE($3, phone),
+          updated_at = NOW()
+      WHERE id = $4
+      RETURNING *
+    `;
+    const results = await sql(query, [
+      data.full_name,
+      data.email,
+      data.phone,
+      id
+    ]);
+    return results.length > 0 ? new StudentModel(results[0]) : null;
+  }
+
+  // Set selected category (Category 1 / Category 2 / Both)
+  static async setCategory(id, category, sql) {
+    const query = `
+      UPDATE students
+      SET selected_category = $1,
+          updated_at = NOW()
+      WHERE id = $2
+      RETURNING *
+    `;
+    const results = await sql(query, [category, id]);
+    return results.length > 0 ? new StudentModel(results[0]) : null;
+  }
+
+  // Increment feedback count (Category 1)
+  static async incrementFeedbackCount(id, sql) {
+    const query = `
+      UPDATE students
+      SET feedback_count = feedback_count + 1,
+          updated_at = NOW()
+      WHERE id = $1 AND feedback_count < 200
+      RETURNING feedback_count
+    `;
+    const results = await sql(query, [id]);
+    return results[0]?.feedback_count || 0;
+  }
+
+  // Mark ranking as completed (Category 2)
+  static async markRankingComplete(id, sql) {
+    const query = `
+      UPDATE students
+      SET has_completed_ranking = true,
+          updated_at = NOW()
+      WHERE id = $1
+      RETURNING *
+    `;
+    const results = await sql(query, [id]);
+    return results.length > 0 ? new StudentModel(results[0]) : null;
+  }
+
+  // Process check-in/check-out (odd/even logic)
+  static async processCheckInOut(id, sql) {
+    const query = `
+      UPDATE students
+      SET total_scan_count = total_scan_count + 1,
+          is_inside_event = CASE 
+            WHEN (total_scan_count + 1) % 2 = 1 THEN true
+            ELSE false
+          END,
+          last_checkin_at = CASE 
+            WHEN (total_scan_count + 1) % 2 = 1 THEN NOW()
+            ELSE last_checkin_at
+          END,
+          last_checkout_at = CASE 
+            WHEN (total_scan_count + 1) % 2 = 0 THEN NOW()
+            ELSE last_checkout_at
+          END,
+          updated_at = NOW()
+      WHERE id = $1
+      RETURNING *
+    `;
+    const results = await sql(query, [id]);
+    return results.length > 0 ? new StudentModel(results[0]) : null;
+  }
+
+  // Update total active duration (calculated on checkout)
+  static async updateActiveDuration(id, additionalMinutes, sql) {
+    const query = `
+      UPDATE students
+      SET total_active_duration_minutes = total_active_duration_minutes + $1,
+          updated_at = NOW()
+      WHERE id = $2
+      RETURNING total_active_duration_minutes
+    `;
+    const results = await sql(query, [additionalMinutes, id]);
+    return results[0]?.total_active_duration_minutes || 0;
+  }
+
+  // Get leaderboard: Top students by feedback count
+  static async getTopByFeedback(limit = 100, sql) {
+    const query = `
+      SELECT 
+        s.id, s.registration_no, s.full_name, s.feedback_count,
+        sc.school_name
+      FROM students s
+      LEFT JOIN schools sc ON s.school_id = sc.id
+      WHERE s.feedback_count > 0
+      ORDER BY s.feedback_count DESC, s.created_at ASC
+      LIMIT $1
+    `;
+    const results = await sql(query, [limit]);
+    return results.map(row => new StudentModel(row));
+  }
+
+  // Get leaderboard: Top students by active duration
+  static async getTopByDuration(limit = 100, sql) {
+    const query = `
+      SELECT 
+        s.id, s.registration_no, s.full_name, s.total_active_duration_minutes,
+        sc.school_name
+      FROM students s
+      LEFT JOIN schools sc ON s.school_id = sc.id
+      WHERE s.total_active_duration_minutes > 0
+      ORDER BY s.total_active_duration_minutes DESC, s.created_at ASC
+      LIMIT $1
+    `;
+    const results = await sql(query, [limit]);
+    return results.map(row => new StudentModel(row));
+  }
+
+  // Get students by school (for admin filtering)
+  static async findBySchool(schoolId, limit = 100, sql) {
+    const query = `
+      SELECT s.*, sc.school_name
+      FROM students s
+      LEFT JOIN schools sc ON s.school_id = sc.id
+      WHERE s.school_id = $1
+      ORDER BY s.full_name ASC
+    `;
+    const results = await sql(query, [schoolId]);
+    return results.map(row => new StudentModel(row));
+  }
+
+  // Count students currently inside event (real-time stat)
+  static async countInsideEvent(sql) {
+    const query = `
+      SELECT COUNT(*) as count
+      FROM students
+      WHERE is_inside_event = true
+    `;
+    const results = await sql(query);
+    return parseInt(results[0]?.count || 0);
+  }
+
+  // Get all students with pagination (for admin)
+  static async findAll(limit = 100, offset = 0, sql) {
+    const query = `
+      SELECT s.*, sc.school_name
+      FROM students s
+      LEFT JOIN schools sc ON s.school_id = sc.id
+      ORDER BY s.created_at DESC
+      LIMIT $1 OFFSET $2
+    `;
+    const results = await sql(query, [limit, offset]);
+    return results.map(row => new StudentModel(row));
+  }
+
+  // Count total students
+  static async count(sql) {
+    const query = `SELECT COUNT(*) as count FROM students`;
+    const results = await sql(query);
+    return parseInt(results[0]?.count || 0);
+  }
+
+  // Get student statistics (for admin dashboard)
+  static async getStats(sql) {
+    const query = `
+      SELECT 
+        COUNT(*) as total_students,
+        COUNT(*) FILTER (WHERE is_inside_event = true) as currently_inside,
+        AVG(feedback_count) as avg_feedback_count,
+        AVG(total_active_duration_minutes) as avg_duration,
+        COUNT(*) FILTER (WHERE has_completed_ranking = true) as completed_rankings,
+        COUNT(*) FILTER (WHERE feedback_count > 0) as students_with_feedback
+      FROM students
+    `;
+    const results = await sql(query);
+    return results[0];
+  }
+}
+
+export default StudentModel;

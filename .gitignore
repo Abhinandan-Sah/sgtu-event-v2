@@ -89,4 +89,10 @@ tmp/
 temp/
 *.tmp
 
+# Deployment - exclude from production
+server/src/tests/
+server/src/seeders/
+server/src/migrations/
+server/src/scripts/
+
 # /client

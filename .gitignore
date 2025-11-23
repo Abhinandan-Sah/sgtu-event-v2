@@ -89,4 +89,4 @@ tmp/
 temp/
 *.tmp
 
-/client
+# /client

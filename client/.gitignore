@@ -1,0 +1,42 @@
+# Node modules
+node_modules/
+**/node_modules/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Next.js files
+.next/
+out/
+dist/
+
+# Build outputs
+build/
+.cache/
+
+# Runtime files
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+
+# Optional
+coverage/
+tmp/
+.swp

@@ -23,9 +23,9 @@ router.get('/profile', volunteerController.getProfile);
 
 // ✨ Smart QR scanning - Auto-detects entry/exit
 router.post('/scan/student', volunteerController.scanStudentQR);
-router.post('/scan/stall', volunteerController.scanStallQR);
+// router.post('/scan/stall', volunteerController.scanStallQR);
 
-// History route
+// Totel Number of Scan by Volunteer History route
 router.get('/history', volunteerController.getHistory);
 
 export default router;

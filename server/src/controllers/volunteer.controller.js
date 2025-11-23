@@ -169,6 +169,28 @@ const logout = async (req, res, next) => {
 /**
  * Smart scan - Automatically handles check-in OR check-out
  * @route POST /api/volunteer/scan/student
+ * @access Protected (Volunteer only - enforced by authorizeRoles middleware)
+ * 
+ * @description
+ * Allows authenticated volunteers to scan ANY student's QR code for entry/exit management.
+ * The QR code token contains the student's registration number, which is used to identify
+ * and process the check-in/out operation.
+ * 
+ * Security Model:
+ * - JWT token validates the VOLUNTEER role (via middleware)
+ * - QR token identifies the STUDENT being scanned
+ * - No need to verify volunteer owns the QR code (volunteers scan other people)
+ * 
+ * Flow:
+ * 1. Decode QR token to extract student registration number
+ * 2. Find student in database
+ * 3. Determine action (ENTRY if outside, EXIT if inside)
+ * 4. Process check-in/out and update timestamps
+ * 5. Calculate duration for EXIT actions
+ * 6. Update volunteer scan count
+ * 
+ * @param {string} req.body.qr_code_token - JWT token from student's QR code
+ * @returns {Object} Student info, action type (ENTRY/EXIT), scan details
  */
 const scanStudentQR = async (req, res, next) => {
   try {
@@ -204,17 +226,15 @@ const scanStudentQR = async (req, res, next) => {
 
     console.log('✅ [SCAN] Student found:', student.full_name);
 
-    // 🔒 3️⃣ SECURITY CHECK: Verify the logged-in user is scanning their OWN QR code
-    // Get the logged-in user's details (they should be a student)
-    const loggedInStudent = await Student.findById(req.user.id, query);
-    
-    if (!loggedInStudent) {
-      return errorResponse(res, 'Only students can scan their own QR codes', 403);
+    // 3️⃣ Verify volunteer is active (optional check, can be removed if not needed)
+    const volunteer = await Volunteer.findById(req.user.id, query);
+    if (volunteer && !volunteer.is_active) {
+      console.log('⚠️ [SCAN] Inactive volunteer attempted scan:', volunteer.email);
+      return errorResponse(res, 'Your volunteer account is inactive. Contact admin.', 403);
     }
 
-    // Compare the logged-in student's QR token with the scanned token
-    if (loggedInStudent.qr_code_token !== qr_code_token) {
-      return errorResponse(res, 'You can only scan your own QR code', 403);
+    if (volunteer) {
+      console.log('✅ [SCAN] Volunteer:', volunteer.full_name, '| Location:', volunteer.assigned_location);
     }
 
     // 4️⃣ 🎯 SMART LOGIC: Determine action based on current status
@@ -232,13 +252,38 @@ const scanStudentQR = async (req, res, next) => {
 
     // 7️⃣ Calculate duration AFTER checkout using the previous check-in time
     let durationMinutes = 0;
-    if (action === 'EXIT' && previousCheckInTime) {
+    let checkInOutRecord = null;
+
+    if (action === 'ENTRY') {
+      // 🔥 FIX: Save check-in record to database
+      checkInOutRecord = await CheckInOut.create({
+        student_id: student.id,
+        volunteer_id: req.user.id,
+        scan_type: 'CHECKIN',
+        scan_number: updatedStudent.total_scan_count,
+        duration_minutes: null
+      }, query);
+      
+      console.log('✅ [DB] Check-in record saved:', checkInOutRecord.id);
+      
+    } else if (action === 'EXIT' && previousCheckInTime) {
       const checkInTime = new Date(previousCheckInTime);
-      const checkOutTime = new Date(updatedStudent.last_checkout_at); // Use the UPDATED checkout time
+      const checkOutTime = new Date(updatedStudent.last_checkout_at);
       durationMinutes = Math.floor((checkOutTime - checkInTime) / (1000 * 60));
       
       console.log(`⏱️ [SCAN] Duration: ${durationMinutes} minutes (${Math.floor(durationMinutes / 60)}h ${durationMinutes % 60}m)`);
       console.log(`⏱️ [SCAN] Check-in: ${checkInTime.toISOString()}, Check-out: ${checkOutTime.toISOString()}`);
+      
+      // 🔥 FIX: Save check-out record to database
+      checkInOutRecord = await CheckInOut.create({
+        student_id: student.id,
+        volunteer_id: req.user.id,
+        scan_type: 'CHECKOUT',
+        scan_number: updatedStudent.total_scan_count,
+        duration_minutes: durationMinutes
+      }, query);
+      
+      console.log('✅ [DB] Check-out record saved:', checkInOutRecord.id);
       
       // Update total active duration
       await Student.updateActiveDuration(student.id, durationMinutes, query);
@@ -265,7 +310,8 @@ const scanStudentQR = async (req, res, next) => {
       action: action,
       scan_details: {
         timestamp: new Date().toISOString(),
-        volunteer_id: req.user.id
+        volunteer_id: req.user.id,
+        volunteer_email: req.user.email
       }
     };
 

@@ -85,6 +85,41 @@ class CheckInOutModel {
     return results.length > 0 ? new CheckInOutModel(results[0]) : null;
   }
 
+  // Alias for compatibility
+  static async findLastCheckIn(studentId, sql) {
+    return await CheckInOutModel.getLastCheckIn(studentId, sql);
+  }
+
+  // Check if student has active check-in (no checkout yet)
+  static async findActiveCheckIn(studentId, sql) {
+    const query = `
+      SELECT * FROM check_in_outs
+      WHERE student_id = $1 AND scan_type = 'CHECKIN'
+      AND id NOT IN (
+        SELECT DISTINCT 
+          (SELECT id FROM check_in_outs WHERE student_id = $1 AND scan_type = 'CHECKIN' AND scanned_at < c.scanned_at ORDER BY scanned_at DESC LIMIT 1)
+        FROM check_in_outs c
+        WHERE student_id = $1 AND scan_type = 'CHECKOUT'
+      )
+      ORDER BY scanned_at DESC
+      LIMIT 1
+    `;
+    const results = await sql(query, [studentId]);
+    return results.length > 0 ? new CheckInOutModel(results[0]) : null;
+  }
+
+  // Update checkout with duration
+  static async checkOut(checkInId, durationMinutes, sql) {
+    const query = `
+      UPDATE check_in_outs
+      SET duration_minutes = $1
+      WHERE id = $2
+      RETURNING *
+    `;
+    const results = await sql(query, [durationMinutes, checkInId]);
+    return results.length > 0 ? new CheckInOutModel(results[0]) : null;
+  }
+
   // Update duration for checkout record
   static async updateDuration(id, durationMinutes, sql) {
     const query = `

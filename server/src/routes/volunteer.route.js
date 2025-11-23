@@ -1,26 +1,31 @@
 import express from 'express';
 const router = express.Router();
 import volunteerController from '../controllers/volunteer.controller.js';
-import { authenticateToken } from '../middleware/auth.js';
+import { authenticateToken, authorizeRoles } from '../middleware/auth.js';
 
 /**
  * Volunteer Routes
- * Mix of public (login, register) and protected routes
+ * Security: Router-level middleware for DRY principle
+ * All protected routes automatically require VOLUNTEER role
  */
 
-// Public routes
+// 🔓 Public routes (no authentication)
 router.post('/login', volunteerController.login);
 router.post('/register', volunteerController.register);
 
-// Protected routes (require authentication)
-router.post('/logout', authenticateToken, volunteerController.logout);
-router.get('/profile', authenticateToken, volunteerController.getProfile);
+// 🔒 Apply authentication + VOLUNTEER authorization to all routes below
+router.use(authenticateToken);
+router.use(authorizeRoles('VOLUNTEER'));
+
+// Protected routes (automatically secured with VOLUNTEER role)
+router.post('/logout', volunteerController.logout);
+router.get('/profile', volunteerController.getProfile);
 
 // ✨ Smart QR scanning - Auto-detects entry/exit
-router.post('/scan/student', authenticateToken, volunteerController.scanStudentQR);
-router.post('/scan/stall', authenticateToken, volunteerController.scanStallQR);
+router.post('/scan/student', volunteerController.scanStudentQR);
+router.post('/scan/stall', volunteerController.scanStallQR);
 
 // History route
-router.get('/history', authenticateToken, volunteerController.getHistory);
+router.get('/history', volunteerController.getHistory);
 
 export default router;

@@ -1,27 +1,32 @@
 import express from 'express';
 const router = express.Router();
 import adminController from '../controllers/admin.controller.js';
-import { authenticateToken } from '../middleware/auth.js';
+import { authenticateToken, authorizeRoles } from '../middleware/auth.js';
 
 /**
  * Admin Routes
- * All routes require authentication except login
+ * Security: Router-level middleware for DRY principle
+ * All protected routes automatically require ADMIN role
  */
 
-// Public routes
+// 🔓 Public routes (no authentication)
 router.post('/login', adminController.login);
 
-// Protected routes (require authentication)
-router.post('/logout', authenticateToken, adminController.logout);
-router.get('/profile', authenticateToken, adminController.getProfile);
-router.put('/profile', authenticateToken, adminController.updateProfile);
-router.get('/students', authenticateToken, adminController.getAllStudents);
-router.get('/volunteers', authenticateToken, adminController.getAllVolunteers);
-router.get('/stalls', authenticateToken, adminController.getAllStalls);
-router.get('/stats', authenticateToken, adminController.getStats);
+// 🔒 Apply authentication + ADMIN authorization to all routes below
+router.use(authenticateToken);
+router.use(authorizeRoles('ADMIN'));
+
+// Protected routes (automatically secured with ADMIN role)
+router.post('/logout', adminController.logout);
+router.get('/profile', adminController.getProfile);
+router.put('/profile', adminController.updateProfile);
+router.get('/students', adminController.getAllStudents);
+router.get('/volunteers', adminController.getAllVolunteers);
+router.get('/stalls', adminController.getAllStalls);
+router.get('/stats', adminController.getStats);
 
 // School ranking results (Category 2 - ADMIN ONLY)
-router.get('/top-schools', authenticateToken, adminController.getTopSchools);
-router.get('/top-stalls', authenticateToken, adminController.getTopStalls);
+router.get('/top-schools', adminController.getTopSchools);
+router.get('/top-stalls', adminController.getTopStalls);
 
 export default router;

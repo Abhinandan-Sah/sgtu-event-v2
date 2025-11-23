@@ -2,15 +2,37 @@ import jwt from 'jsonwebtoken';
 import { getTokenFromCookie } from '../helpers/cookie.js';
 
 /**
- * Authentication Middleware
- * Verifies JWT token from cookies (primary) or Authorization header (fallback)
- * Supports dual authentication for web browsers and mobile apps
+ * Authentication & Authorization Middleware
+ * 
+ * Two-layer security approach:
+ * 1. authenticateToken - Validates JWT token and extracts user data
+ * 2. authorizeRoles - Enforces role-based access control (RBAC)
+ * 
+ * Supports dual authentication:
+ * - HTTP-Only cookies (web browsers - more secure)
+ * - Authorization header (mobile apps, Postman)
+ * 
+ * @module middleware/auth
  */
 
 /**
  * Authenticate JWT token from HTTP-Only cookie or Authorization header
+ * 
  * @middleware
- * @description Primary: HTTP-Only cookie (secure), Fallback: Authorization header (mobile/Postman)
+ * @description 
+ * - Validates JWT token signature and expiration
+ * - Extracts user payload (id, email, role) and attaches to req.user
+ * - Does NOT check user role (use authorizeRoles for that)
+ * 
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @param {Function} next - Express next middleware function
+ * 
+ * @returns {void}
+ * 
+ * @throws {401} - Missing token
+ * @throws {403} - Invalid or expired token
+ * @throws {500} - Authentication error
  */
 export const authenticateToken = (req, res, next) => {
   try {
@@ -53,9 +75,30 @@ export const authenticateToken = (req, res, next) => {
 };
 
 /**
- * Authorize specific roles
- * @param {string[]} roles - Allowed roles
- * @returns {Function} Middleware function
+ * Authorize specific roles (RBAC - Role-Based Access Control)
+ * 
+ * @middleware
+ * @description 
+ * - Checks if authenticated user has the required role(s)
+ * - Must be used AFTER authenticateToken middleware
+ * - Supports multiple roles (e.g., authorizeRoles('ADMIN', 'VOLUNTEER'))
+ * 
+ * @param {...string} roles - Allowed roles (ADMIN, STUDENT, VOLUNTEER)
+ * @returns {Function} Express middleware function
+ * 
+ * @example
+ * // Single role
+ * router.get('/admin-only', authenticateToken, authorizeRoles('ADMIN'), controller.adminOnly);
+ * 
+ * // Multiple roles
+ * router.get('/staff', authenticateToken, authorizeRoles('ADMIN', 'VOLUNTEER'), controller.staff);
+ * 
+ * // Router-level (DRY principle)
+ * router.use(authenticateToken);
+ * router.use(authorizeRoles('ADMIN'));
+ * 
+ * @throws {401} - User not authenticated (req.user missing)
+ * @throws {403} - User doesn't have required role
  */
 export const authorizeRoles = (...roles) => {
   return (req, res, next) => {

@@ -202,8 +202,15 @@ const scanStudentQR = async (req, res, next) => {
 
     console.log('🔍 [SCAN] Received QR token (first 50 chars):', qr_code_token.substring(0, 50) + '...');
 
-    // 1️⃣ Verify QR code token
-    const decoded = await QRCodeService.verifyStudentQRToken(qr_code_token);
+    // 1️⃣ Verify QR code token (try rotating first, fallback to static)
+    let decoded = QRCodeService.verifyRotatingStudentToken(qr_code_token);
+    
+    // If not a valid rotating token, try static token verification
+    if (!decoded.valid && decoded.isStatic) {
+      console.log('🔄 [SCAN] Not a rotating token, trying static verification...');
+      decoded = await QRCodeService.verifyStudentQRToken(qr_code_token);
+    }
+    
     if (!decoded || !decoded.valid) {
       console.log('❌ [SCAN] Invalid QR token');
       return errorResponse(res, 'Invalid QR code', 400);

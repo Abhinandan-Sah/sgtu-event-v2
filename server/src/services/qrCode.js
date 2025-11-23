@@ -5,6 +5,195 @@ import crypto from 'crypto';
 import redisClient from '../config/redis.js';
 
 class QRCodeService {
+  // ============================================================
+  // 🔄 ROTATING QR CODE CONFIGURATION (30-second rotation)
+  // ============================================================
+  static ROTATION_INTERVAL_SECONDS = 60;  // Token rotates every 30 seconds
+  static GRACE_PERIOD_WINDOWS = 2;        // Accept tokens from 2 previous windows (60 seconds grace)
+
+  /**
+   * Get current time window for rotating QR codes
+   * Time window changes every 30 seconds (floor division)
+   * Example: timestamp 1732368450 → window 57745614
+   * @returns {number} Current time window
+   */
+  static getCurrentTimeWindow() {
+    return Math.floor(Date.now() / 1000 / this.ROTATION_INTERVAL_SECONDS);
+  }
+
+  /**
+   * Generate rotating student QR token (changes every 30 seconds)
+   * Uses HMAC for security without database updates
+   * Token format: JWT with { r: registration_no, w: time_window, h: hmac, t: 'RS' }
+   * Token size: ~120-140 characters (creates Version 4 QR code - clean & scannable)
+   * 
+   * @param {Object} student - Student object with registration_no
+   * @returns {string} JWT token that expires in 90 seconds (covers 3 time windows)
+   */
+  static generateRotatingStudentToken(student) {
+    if (!student || !student.registration_no) {
+      throw new Error('Invalid student data for rotating QR generation');
+    }
+
+    const currentWindow = this.getCurrentTimeWindow();
+    
+    // HMAC signature: proves token wasn't tampered with
+    // Uses registration_no + time_window + secret key
+    const hmac = crypto
+      .createHmac('sha256', process.env.JWT_SECRET)
+      .update(`${student.registration_no}:${currentWindow}`)
+      .digest('hex')
+      .substring(0, 12); // 12 chars sufficient for security
+
+    // Minimal payload for smallest QR code
+    const payload = {
+      r: student.registration_no,  // Registration number (primary lookup)
+      w: currentWindow,             // Time window (for rotation)
+      h: hmac,                      // HMAC signature (for verification)
+      t: 'RS'                       // Type: Rotating Student
+    };
+
+    // JWT expires in 90 seconds (covers current + 2 grace period windows)
+    return jwt.sign(payload, process.env.JWT_SECRET, {
+      algorithm: 'HS256',
+      expiresIn: '90s'
+    });
+  }
+
+  /**
+   * Verify rotating student QR token
+   * Validates HMAC signature and checks if time window is within grace period
+   * 
+   * @param {string} token - JWT token from QR code
+   * @returns {Object} { valid, registration_no, time_window, isStatic } or { valid: false }
+   */
+  static verifyRotatingStudentToken(token) {
+    try {
+      // 1. Decode JWT
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+      // 2. Check if it's a rotating token
+      if (decoded.t !== 'RS') {
+        // Not a rotating token, might be static
+        return { valid: false, isStatic: true };
+      }
+
+      const { r: registration_no, w: tokenWindow, h: receivedHmac } = decoded;
+
+      // 3. Calculate expected HMAC for the token's time window
+      const expectedHmac = crypto
+        .createHmac('sha256', process.env.JWT_SECRET)
+        .update(`${registration_no}:${tokenWindow}`)
+        .digest('hex')
+        .substring(0, 12);
+
+      // 4. Validate HMAC
+      if (receivedHmac !== expectedHmac) {
+        console.log('❌ [ROTATING QR] HMAC mismatch - token tampered');
+        return { valid: false };
+      }
+
+      // 5. Check if time window is within grace period
+      const currentWindow = this.getCurrentTimeWindow();
+      const windowDifference = currentWindow - tokenWindow;
+
+      if (windowDifference > this.GRACE_PERIOD_WINDOWS || windowDifference < 0) {
+        console.log(`❌ [ROTATING QR] Token expired (window difference: ${windowDifference})`);
+        return { valid: false, expired: true };
+      }
+
+      console.log(`✅ [ROTATING QR] Valid token (window: ${tokenWindow}, current: ${currentWindow}, diff: ${windowDifference})`);
+
+      return {
+        valid: true,
+        registration_no,
+        time_window: tokenWindow,
+        isStatic: false
+      };
+    } catch (error) {
+      if (error.name === 'TokenExpiredError') {
+        console.log('❌ [ROTATING QR] JWT expired');
+        return { valid: false, expired: true };
+      }
+      console.log('❌ [ROTATING QR] Invalid token:', error.message);
+      return { valid: false };
+    }
+  }
+
+  /**
+   * Generate rotating QR code image (with Redis caching)
+   * Caches QR image with key based on time window for automatic expiration
+   * Redis key includes time window, so cache auto-expires when rotation happens
+   * 
+   * @param {Object} student - Student object with registration_no
+   * @param {Object} options - QR code generation options
+   * @returns {Promise<string>} Base64 QR code image (data URL)
+   */
+  static async generateRotatingQRCodeImage(student, options = {}) {
+    const currentWindow = this.getCurrentTimeWindow();
+    const cacheKey = `qr:rotating:${student.registration_no}:${currentWindow}`;
+
+    // 1. Check Redis cache (key includes time window for auto-expiration)
+    try {
+      const cachedQR = await redisClient.get(cacheKey);
+      if (cachedQR) {
+        console.log(`✅ [CACHE HIT] Rotating QR for student ${student.registration_no} (window: ${currentWindow})`);
+        return cachedQR;
+      }
+    } catch (error) {
+      console.log('⚠️ [CACHE] Redis read failed:', error.message);
+    }
+
+    // 2. Generate fresh rotating token
+    const token = this.generateRotatingStudentToken(student);
+
+    // 3. Generate QR code image
+    const qrOptions = {
+      errorCorrectionLevel: 'M',  // Medium error correction (15%)
+      type: 'image/png',
+      quality: 0.92,
+      margin: 1,
+      color: {
+        dark: '#000000',
+        light: '#FFFFFF'
+      },
+      width: options.width || 300,
+      ...options
+    };
+
+    const qrCodeDataURL = await QRCode.toDataURL(token, qrOptions);
+
+    // 4. Cache in Redis with TTL = rotation interval (30 seconds)
+    try {
+      await redisClient.setex(
+        cacheKey,
+        this.ROTATION_INTERVAL_SECONDS,  // Expires when next rotation happens
+        qrCodeDataURL
+      );
+      console.log(`✅ [CACHE SET] Rotating QR cached for ${this.ROTATION_INTERVAL_SECONDS}s (window: ${currentWindow})`);
+    } catch (error) {
+      console.log('⚠️ [CACHE] Redis write failed:', error.message);
+    }
+
+    return qrCodeDataURL;
+  }
+
+  /**
+   * Get seconds until next QR code rotation
+   * Useful for UI countdown timers
+   * @returns {number} Seconds until next rotation (0-30)
+   */
+  static getSecondsUntilRotation() {
+    const now = Math.floor(Date.now() / 1000);
+    const currentWindow = this.getCurrentTimeWindow();
+    const nextRotationTime = (currentWindow + 1) * this.ROTATION_INTERVAL_SECONDS;
+    return nextRotationTime - now;
+  }
+
+  // ============================================================
+  // 📌 STATIC QR CODE METHODS (original methods preserved)
+  // ============================================================
+
   /**
    * Generate Static QR Token for Student (OPTIMIZED for scanning)
    * Compressed payload: 317 chars → ~100 chars for better QR density

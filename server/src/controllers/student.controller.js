@@ -189,17 +189,24 @@ const getQRCode = async (req, res, next) => {
       return errorResponse(res, 'Student not found', 404);
     }
 
-    if (!student.qr_code_token) {
-      return errorResponse(res, 'QR code not generated', 404);
-    }
+    // Generate rotating token (JWT string ~140 chars)
+    const token = QRCodeService.generateRotatingStudentToken(student);
+    
+    // Generate rotating QR code image (Base64 PNG)
+    const qrCodeImage = await QRCodeService.generateRotatingQRCodeImage(student);
 
-    // Generate QR code image
-    const qrCodeImage = await QRCodeService.generateQRCodeImage(student.qr_code_token);
+    // Calculate rotation metadata for frontend
+    const rotationInfo = {
+      expires_in_seconds: QRCodeService.getSecondsUntilRotation(),
+      rotation_interval: QRCodeService.ROTATION_INTERVAL_SECONDS,
+      grace_period_seconds: QRCodeService.GRACE_PERIOD_WINDOWS * QRCodeService.ROTATION_INTERVAL_SECONDS
+    };
 
     return successResponse(res, {
       qr_code: qrCodeImage,
-      token: student.qr_code_token,
-      registration_no: student.registration_no
+      qr_code_token: token,
+      registration_no: student.registration_no,
+      rotation_info: rotationInfo
     });
   } catch (error) {
     next(error);

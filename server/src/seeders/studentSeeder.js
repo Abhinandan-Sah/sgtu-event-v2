@@ -428,17 +428,15 @@ export async function seedStudents(schools) {
     }
 
     try {
-      // Generate production-ready QR token (JWT format, 157 chars)
-      const qrToken = QRCodeService.generateStudentQRToken({
-        registration_no: student.registration_no
-      });
+      // QR tokens are now generated on-demand (rotating every 30 seconds)
+      // No need to generate and store them anymore
       
       const insertQuery = `
         INSERT INTO students (
           registration_no, email, password_hash, full_name, 
-          school_id, phone, qr_code_token
+          school_id, phone
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        VALUES ($1, $2, $3, $4, $5, $6)
         ON CONFLICT (registration_no) DO NOTHING
         RETURNING id, email, registration_no
       `;
@@ -449,8 +447,7 @@ export async function seedStudents(schools) {
         hashedPassword,
         student.full_name,
         school_id,
-        student.phone,
-        qrToken
+        student.phone
       ]);
       
       if (result.length > 0) {

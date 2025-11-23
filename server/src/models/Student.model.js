@@ -17,7 +17,6 @@ class StudentModel {
     this.feedback_count = data.feedback_count;
     this.has_completed_ranking = data.has_completed_ranking;
     this.selected_category = data.selected_category;
-    this.qr_code_token = data.qr_code_token;
     this.last_checkin_at = data.last_checkin_at;
     this.last_checkout_at = data.last_checkout_at;
     this.total_active_duration_minutes = data.total_active_duration_minutes;
@@ -76,18 +75,7 @@ class StudentModel {
     return results.length > 0 ? new StudentModel(results[0]) : null;
   }
 
-  // Find by QR token (for volunteer scanning)
-  static async findByQRToken(token, sql) {
-    const query = `
-      SELECT s.*, sc.school_name
-      FROM students s
-      LEFT JOIN schools sc ON s.school_id = sc.id
-      WHERE s.qr_code_token = $1
-      LIMIT 1
-    `;
-    const results = await sql(query, [token]);
-    return results.length > 0 ? new StudentModel(results[0]) : null;
-  }
+  // Find by QR token method removed - now using findByRegistrationNo() with rotating tokens
 
   // Create new student
   static async create(data, sql) {
@@ -114,15 +102,8 @@ class StudentModel {
     
     const student = new StudentModel(results[0]);
     
-    // Generate and save QR code automatically
-    try {
-      const qrToken = QRCodeService.generateStudentQRToken(student);
-      await sql`UPDATE students SET qr_code_token = ${qrToken} WHERE id = ${student.id}`;
-      student.qr_code_token = qrToken;
-    } catch (qrError) {
-      console.error('QR generation failed for student:', student.id, qrError);
-      // Continue without QR - can be generated later
-    }
+    // QR code tokens are now generated on-demand (rotating every 30 seconds)
+    // No need to store in database anymore
     
     return student;
   }
@@ -142,7 +123,7 @@ class StudentModel {
       for (let j = 0; j < batch.length; j++) {
         const offset = j * 7;
         placeholders.push(
-          `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7})`
+          `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6})`
         );
         const hashedPassword = await StudentModel.hashPassword(batch[j].password);
         values.push(
@@ -151,14 +132,13 @@ class StudentModel {
           hashedPassword,
           batch[j].full_name,
           batch[j].school_id,
-          batch[j].phone || null,
-          batch[j].qr_code_token
+          batch[j].phone || null
         );
       }
 
       const query = `
         INSERT INTO students (
-          registration_no, email, password_hash, full_name, school_id, phone, qr_code_token
+          registration_no, email, password_hash, full_name, school_id, phone
         )
         VALUES ${placeholders.join(', ')}
         ON CONFLICT (registration_no) DO NOTHING

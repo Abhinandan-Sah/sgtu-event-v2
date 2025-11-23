@@ -35,9 +35,6 @@ CREATE TABLE IF NOT EXISTS students (
   has_completed_ranking BOOLEAN DEFAULT FALSE,
   selected_category VARCHAR(20) CHECK (selected_category IN ('CATEGORY_1', 'CATEGORY_2', 'BOTH')),
   
-  -- QR Code (static)
-  qr_code_token TEXT UNIQUE,
-  
   -- Timestamps
   last_checkin_at TIMESTAMP,
   last_checkout_at TIMESTAMP,
@@ -50,7 +47,6 @@ CREATE TABLE IF NOT EXISTS students (
 CREATE INDEX idx_students_registration ON students(registration_no);
 CREATE INDEX idx_students_email ON students(email);
 CREATE INDEX idx_students_school ON students(school_id);
-CREATE INDEX idx_students_qr ON students(qr_code_token);
 CREATE INDEX idx_students_inside ON students(is_inside_event);
 CREATE INDEX idx_students_feedback_count ON students(feedback_count DESC);
 CREATE INDEX idx_students_duration ON students(total_active_duration_minutes DESC);

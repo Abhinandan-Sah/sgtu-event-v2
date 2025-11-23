@@ -77,62 +77,65 @@ const stalls = [
     school_name: 'School of Computing Sciences and Engineering'
   },
 
-  // School of Engineering (Block B)
+  // Engineering Schools (Block B) - Mechanical, Electrical, Civil
+  // ME-* → School of Mechanical Engineering
+  // EE-* → School of Electrical Engineering
+  // CE-* → School of Civil Engineering
   {
     stall_number: 'ME-001',
     stall_name: 'Robotics & Automation',
     description: 'Industrial robots, automated systems, and mechatronics',
     location: 'Ground Floor, Block B',
-    school_name: 'School of Engineering'
+    school_name: 'School of Mechanical Engineering'
   },
   {
     stall_number: 'ME-002',
     stall_name: '3D Printing & Manufacturing',
     description: 'Additive manufacturing, rapid prototyping, and design',
     location: 'Ground Floor, Block B',
-    school_name: 'School of Engineering'
+    school_name: 'School of Mechanical Engineering'
   },
   {
     stall_number: 'EE-001',
     stall_name: 'Renewable Energy Systems',
     description: 'Solar panels, wind turbines, and sustainable power solutions',
     location: 'First Floor, Block B',
-    school_name: 'School of Engineering'
+    school_name: 'School of Electrical Engineering'
   },
   {
     stall_number: 'EE-002',
     stall_name: 'Electronics & Circuit Design',
     description: 'PCB design, embedded systems, and microcontrollers',
     location: 'First Floor, Block B',
-    school_name: 'School of Engineering'
+    school_name: 'School of Electrical Engineering'
   },
   {
     stall_number: 'CE-001',
     stall_name: 'Smart Infrastructure Models',
     description: 'Sustainable construction, green buildings, and urban planning',
     location: 'Second Floor, Block B',
-    school_name: 'School of Engineering'
+    school_name: 'School of Civil Engineering'
   },
   {
     stall_number: 'CE-002',
     stall_name: 'Bridge & Structure Design',
     description: 'Structural engineering models and earthquake-resistant designs',
     location: 'Second Floor, Block B',
-    school_name: 'School of Engineering'
+    school_name: 'School of Civil Engineering'
   },
   {
     stall_number: 'ME-003',
     stall_name: 'Drone Technology',
     description: 'UAV systems, aerial photography, and autonomous flight',
     location: 'Third Floor, Block B',
-    school_name: 'School of Engineering'
+    school_name: 'School of Mechanical Engineering'
   },
   {
     stall_number: 'EE-003',
     stall_name: 'Electric Vehicles & Batteries',
     description: 'EV technology, battery management, and charging systems',
     location: 'Third Floor, Block B',
-    school_name: 'School of Engineering'
+    school_name: 'School of Electrical Engineering'
   },
 
   // School of Management (Block C)

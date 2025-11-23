@@ -185,17 +185,20 @@ const students = [
     batch: 2024
   },
 
-  // School of Engineering (10 students)
+  // Engineering Students (10 students - auto-mapped to specific schools)
+  // Civil Engineering → School of Civil Engineering
+  // Mechanical Engineering → School of Mechanical Engineering  
+  // Electrical Engineering → School of Electrical Engineering
   {
     full_name: 'Amit Kumar',
     email: 'amit.kumar@sgtu.ac.in',
     registration_no: '2024SGTU20001',
     phone: '9876543212',
-    school_name: 'School of Engineering',
+    school_name: 'School of Civil Engineering',  // Auto-corrected by program_name mapping
     date_of_birth: '2005-02-14',
     pincode: '110011',
     address: 'K-456, Dwarka, New Delhi',
-    program_name: 'BTech Civil',
+    program_name: 'BTech Civil Engineering',
     batch: 2024
   },
   {
@@ -203,11 +206,11 @@ const students = [
     email: 'sneha.gupta@sgtu.ac.in',
     registration_no: '2024SGTU20002',
     phone: '9876543213',
-    school_name: 'School of Engineering',
+    school_name: 'School of Mechanical Engineering',  // Auto-corrected by program_name mapping
     date_of_birth: '2006-06-28',
     pincode: '110012',
     address: 'L-789, Janakpuri, New Delhi',
-    program_name: 'BTech Mechanical',
+    program_name: 'BTech Mechanical Engineering',
     batch: 2024
   },
   {
@@ -215,11 +218,11 @@ const students = [
     email: 'rajesh.yadav@sgtu.ac.in',
     registration_no: '2024SGTU20003',
     phone: '9876543226',
-    school_name: 'School of Engineering',
+    school_name: 'School of Electrical Engineering',
     date_of_birth: '2005-09-05',
     pincode: '110013',
     address: 'M-321, Uttam Nagar, New Delhi',
-    program_name: 'BTech Electrical',
+    program_name: 'BTech Electrical Engineering',
     batch: 2024
   },
   {
@@ -227,11 +230,11 @@ const students = [
     email: 'ananya.pillai@sgtu.ac.in',
     registration_no: '2024SGTU20004',
     phone: '9876543227',
-    school_name: 'School of Engineering',
+    school_name: 'School of Civil Engineering',
     date_of_birth: '2006-03-17',
     pincode: '110014',
     address: 'N-654, Rajouri Garden, New Delhi',
-    program_name: 'BTech Civil',
+    program_name: 'BTech Civil Engineering',
     batch: 2024
   },
   {
@@ -239,11 +242,11 @@ const students = [
     email: 'varun.kapoor@sgtu.ac.in',
     registration_no: '2024SGTU20005',
     phone: '9876543228',
-    school_name: 'School of Engineering',
+    school_name: 'School of Mechanical Engineering',
     date_of_birth: '2005-11-29',
     pincode: '110015',
     address: 'O-987, Tilak Nagar, New Delhi',
-    program_name: 'BTech Mechanical',
+    program_name: 'BTech Mechanical Engineering',
     batch: 2024
   },
   {
@@ -251,11 +254,11 @@ const students = [
     email: 'sakshi.reddy@sgtu.ac.in',
     registration_no: '2024SGTU20006',
     phone: '9876543229',
-    school_name: 'School of Engineering',
+    school_name: 'School of Electrical Engineering',
     date_of_birth: '2005-07-14',
     pincode: '110016',
     address: 'P-234, Punjabi Bagh, New Delhi',
-    program_name: 'BTech Electrical',
+    program_name: 'BTech Electrical Engineering',
     batch: 2024
   },
   {
@@ -263,11 +266,11 @@ const students = [
     email: 'harsh.tiwari@sgtu.ac.in',
     registration_no: '2024SGTU20007',
     phone: '9876543230',
-    school_name: 'School of Engineering',
+    school_name: 'School of Civil Engineering',
     date_of_birth: '2005-12-01',
     pincode: '110017',
     address: 'Q-567, Paschim Vihar, New Delhi',
-    program_name: 'BTech Civil',
+    program_name: 'BTech Civil Engineering',
     batch: 2024
   },
   {
@@ -275,11 +278,11 @@ const students = [
     email: 'ishita.bhatt@sgtu.ac.in',
     registration_no: '2024SGTU20008',
     phone: '9876543231',
-    school_name: 'School of Engineering',
+    school_name: 'School of Mechanical Engineering',
     date_of_birth: '2006-05-23',
     pincode: '110018',
     address: 'R-890, Mayapuri, New Delhi',
-    program_name: 'BTech Mechanical',
+    program_name: 'BTech Mechanical Engineering',
     batch: 2024
   },
   {
@@ -287,11 +290,11 @@ const students = [
     email: 'nikhil.pandey@sgtu.ac.in',
     registration_no: '2024SGTU20009',
     phone: '9876543232',
-    school_name: 'School of Engineering',
+    school_name: 'School of Electrical Engineering',
     date_of_birth: '2005-08-19',
     pincode: '110019',
     address: 'S-123, Nangloi, New Delhi',
-    program_name: 'BTech Electrical',
+    program_name: 'BTech Electrical Engineering',
     batch: 2024
   },
   {
@@ -299,11 +302,11 @@ const students = [
     email: 'tanvi.mehta@sgtu.ac.in',
     registration_no: '2024SGTU20010',
     phone: '9876543233',
-    school_name: 'School of Engineering',
+    school_name: 'School of Civil Engineering',
     date_of_birth: '2006-02-08',
     pincode: '110020',
     address: 'T-456, Moti Nagar, New Delhi',
-    program_name: 'BTech Civil',
+    program_name: 'BTech Civil Engineering',
     batch: 2024
   },
 

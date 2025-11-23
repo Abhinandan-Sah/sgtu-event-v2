@@ -12,7 +12,6 @@ DROP INDEX IF EXISTS idx_students_batch;
 DROP INDEX IF EXISTS idx_students_program;
 DROP INDEX IF EXISTS idx_students_pincode;
 DROP INDEX IF EXISTS idx_students_dob;
-DROP INDEX IF EXISTS idx_students_first_login;
 
 -- Make email NOT NULL again (ensure no NULL emails before running this)
 -- ALTER TABLE students ALTER COLUMN email SET NOT NULL;

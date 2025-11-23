@@ -16,100 +16,137 @@ async function runMigration() {
   try {
     console.log('🚀 Starting database migration...\n');
 
-    // Read migration file
-    const migrationPath = path.join(__dirname, '001_initial_schema.sql');
-    let migrationSQL = fs.readFileSync(migrationPath, 'utf-8');
+    // Create migrations tracking table if not exists
+    await sql(`
+      CREATE TABLE IF NOT EXISTS _migrations (
+        id SERIAL PRIMARY KEY,
+        migration_name VARCHAR(255) UNIQUE NOT NULL,
+        executed_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
 
-    console.log('📄 Running migration: 001_initial_schema.sql');
+    // Get list of migration files (in order)
+    const migrationFiles = [
+      '001_initial_schema.sql',
+      '003_add_student_auth_fields.sql',
+      '004_remove_is_first_login.sql'
+    ];
 
-    // Remove single-line comments
-    migrationSQL = migrationSQL
-      .split('\n')
-      .filter(line => !line.trim().startsWith('--'))
-      .join('\n');
+    // Check which migrations have already been run
+    const executedMigrations = await sql('SELECT migration_name FROM _migrations');
+    const executedNames = new Set(executedMigrations.map(m => m.migration_name));
 
-    // Split by semicolons but preserve function bodies ($$...$$)
-    const statements = [];
-    let current = '';
-    let inDollarQuote = false;
+    console.log(`📊 Found ${migrationFiles.length} migration files\n`);
 
-    for (let i = 0; i < migrationSQL.length; i++) {
-      const char = migrationSQL[i];
-      const next = migrationSQL[i + 1];
-
-      current += char;
-
-      // Detect $$ boundaries
-      if (char === '$' && next === '$') {
-        inDollarQuote = !inDollarQuote;
-        current += next;
-        i++; // Skip next $
+    for (const fileName of migrationFiles) {
+      // Skip if already executed
+      if (executedNames.has(fileName)) {
+        console.log(`⏭️  Skipped: ${fileName} (already executed)`);
+        continue;
       }
 
-      // Split on semicolon only if not inside $$
-      if (char === ';' && !inDollarQuote) {
-        const stmt = current.trim();
-        if (stmt && stmt.length > 10) {
-          statements.push(stmt);
+      console.log(`📄 Running migration: ${fileName}`);
+
+      // Read migration file
+      const migrationPath = path.join(__dirname, fileName);
+      let migrationSQL = fs.readFileSync(migrationPath, 'utf-8');
+
+      // Remove single-line comments
+      migrationSQL = migrationSQL
+        .split('\n')
+        .filter(line => !line.trim().startsWith('--'))
+        .join('\n');
+
+      // Split by semicolons but preserve function bodies ($$...$$)
+      const statements = [];
+      let current = '';
+      let inDollarQuote = false;
+
+      for (let i = 0; i < migrationSQL.length; i++) {
+        const char = migrationSQL[i];
+        const next = migrationSQL[i + 1];
+
+        current += char;
+
+        // Detect $$ boundaries
+        if (char === '$' && next === '$') {
+          inDollarQuote = !inDollarQuote;
+          current += next;
+          i++; // Skip next $
         }
-        current = '';
-      }
-    }
 
-    // Add last statement if exists
-    if (current.trim().length > 10) {
-      statements.push(current.trim());
-    }
-
-    console.log(`📊 Found ${statements.length} SQL statements to execute\n`);
-
-    // Execute each statement
-    let executed = 0;
-    for (const statement of statements) {
-      try {
-        await sql(statement);
-        executed++;
-        
-        // Show progress
-        if (statement.includes('CREATE TABLE')) {
-          const tableName = statement.match(/CREATE TABLE IF NOT EXISTS (\w+)/)?.[1];
-          if (tableName) console.log(`   ✓ Created table: ${tableName}`);
-        } else if (statement.includes('CREATE INDEX')) {
-          const indexName = statement.match(/CREATE INDEX (\w+)/)?.[1];
-          if (indexName) console.log(`   ✓ Created index: ${indexName}`);
-        } else if (statement.includes('CREATE TRIGGER')) {
-          const triggerName = statement.match(/CREATE TRIGGER (\w+)/)?.[1];
-          if (triggerName) console.log(`   ✓ Created trigger: ${triggerName}`);
-        } else if (statement.includes('CREATE OR REPLACE FUNCTION')) {
-          console.log(`   ✓ Created function: update_updated_at_column()`);
-        } else if (statement.includes('INSERT INTO')) {
-          console.log(`   ✓ Inserted seed data`);
+        // Split on semicolon only if not inside $$
+        if (char === ';' && !inDollarQuote) {
+          const stmt = current.trim();
+          if (stmt && stmt.length > 10) {
+            statements.push(stmt);
+          }
+          current = '';
         }
-      } catch (error) {
-        console.error(`   ✗ Failed statement: ${statement.substring(0, 50)}...`);
-        throw error;
       }
+
+      // Add last statement if exists
+      if (current.trim().length > 10) {
+        statements.push(current.trim());
+      }
+
+      console.log(`   📊 Found ${statements.length} SQL statements\n`);
+
+      // Execute each statement
+      let executed = 0;
+      for (const statement of statements) {
+        try {
+          await sql(statement);
+          executed++;
+          
+          // Show progress
+          if (statement.includes('CREATE TABLE')) {
+            const tableName = statement.match(/CREATE TABLE IF NOT EXISTS (\w+)/)?.[1];
+            if (tableName) console.log(`     ✓ Created table: ${tableName}`);
+          } else if (statement.includes('CREATE INDEX')) {
+            const indexName = statement.match(/CREATE INDEX (?:IF NOT EXISTS )?(\w+)/)?.[1];
+            if (indexName) console.log(`     ✓ Created index: ${indexName}`);
+          } else if (statement.includes('CREATE TRIGGER')) {
+            const triggerName = statement.match(/CREATE TRIGGER (\w+)/)?.[1];
+            if (triggerName) console.log(`     ✓ Created trigger: ${triggerName}`);
+          } else if (statement.includes('CREATE OR REPLACE FUNCTION')) {
+            console.log(`     ✓ Created function: update_updated_at_column()`);
+          } else if (statement.includes('INSERT INTO')) {
+            console.log(`     ✓ Inserted seed data`);
+          }
+        } catch (error) {
+          // Silently skip if index/constraint already exists (idempotent migrations)
+          if (error.code === '42P07' || error.code === '42710') {
+            console.log(`     ⏭️  Skipped: ${error.message.split(':')[0]} (already exists)`);
+            executed++;
+            continue;
+          }
+          console.error(`     ✗ Failed statement: ${statement.substring(0, 50)}...`);
+          throw error;
+        }
+      }
+
+      console.log(`   ✅ Executed ${executed} statements`);
+
+      // Mark migration as executed
+      await sql('INSERT INTO _migrations (migration_name) VALUES ($1)', [fileName]);
+      console.log(`   📝 Marked ${fileName} as executed\n`);
     }
 
-    console.log(`\n✅ Migration completed! Executed ${executed} statements\n`);
+    console.log(`\n✅ All migrations completed successfully!\n`);
 
-    // Verify tables created
-    console.log('🔍 Verifying tables...');
+    console.log('\n🔍 Verifying tables...');
     const tables = await sql`
       SELECT table_name 
       FROM information_schema.tables 
-      WHERE table_schema = 'public'
+      WHERE table_schema = 'public' AND table_name != '_migrations'
       ORDER BY table_name
     `;
 
     console.log('\n📊 Created tables:');
     tables.forEach(t => console.log(`   ✓ ${t.table_name}`));
 
-    // Check seed data
-    const schools = await sql`SELECT COUNT(*) as count FROM schools`;
-    console.log(`\n✅ Seeded ${schools[0].count} schools`);
-
-    console.log('\n🎉 Database is ready for production!\n');
+    console.log('\n🎉 Database schema is ready! Run `npm run seed` to populate data.\n');
     process.exit(0);
 
   } catch (error) {

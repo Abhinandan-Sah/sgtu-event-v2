@@ -11,6 +11,11 @@ async function rollbackDatabase() {
   const sql = neon(process.env.NEON_DATABASE_URL);
 
   try {
+    // Drop migration tracking table first
+    console.log('📌 Dropping migration tracking...');
+    await sql`DROP TABLE IF EXISTS _migrations CASCADE`;
+    console.log('   ✓ Migration tracking dropped\n');
+
     // Drop all triggers first
     console.log('📌 Dropping triggers...');
     await sql`DROP TRIGGER IF EXISTS update_stalls_updated_at ON stalls CASCADE`;

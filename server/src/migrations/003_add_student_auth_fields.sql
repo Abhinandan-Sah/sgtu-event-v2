@@ -21,12 +21,19 @@ CREATE INDEX IF NOT EXISTS idx_students_batch ON students(batch);
 CREATE INDEX IF NOT EXISTS idx_students_program ON students(program_name);
 CREATE INDEX IF NOT EXISTS idx_students_pincode ON students(pincode);
 CREATE INDEX IF NOT EXISTS idx_students_dob ON students(date_of_birth);
-CREATE INDEX IF NOT EXISTS idx_students_first_login ON students(is_first_login) WHERE is_first_login = TRUE;
 
--- Add constraints for data integrity
-ALTER TABLE students
-  ADD CONSTRAINT IF NOT EXISTS chk_batch_year CHECK (batch >= 2000 AND batch <= 2035),
-  ADD CONSTRAINT IF NOT EXISTS chk_pincode_format CHECK (pincode ~ '^[0-9]{6}$');
+-- Add constraints for data integrity (PostgreSQL doesn't support IF NOT EXISTS for constraints)
+-- Using DO block for idempotent constraint creation
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_batch_year') THEN
+    ALTER TABLE students ADD CONSTRAINT chk_batch_year CHECK (batch >= 2000 AND batch <= 2035);
+  END IF;
+  
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_pincode_format') THEN
+    ALTER TABLE students ADD CONSTRAINT chk_pincode_format CHECK (pincode ~ '^[0-9]{6}$');
+  END IF;
+END $$;
 
 -- Add comments for documentation
 COMMENT ON COLUMN students.date_of_birth IS 'Student date of birth - used for password reset verification (PII - handle with care)';
@@ -34,7 +41,6 @@ COMMENT ON COLUMN students.pincode IS 'Student address pincode (6 digits) - used
 COMMENT ON COLUMN students.address IS 'Student full address (optional)';
 COMMENT ON COLUMN students.program_name IS 'Academic program (e.g., BTech CSE, MBA, MCA)';
 COMMENT ON COLUMN students.batch IS 'Enrollment year (e.g., 2022, 2023)';
-COMMENT ON COLUMN students.is_first_login IS 'TRUE if student has never changed default password';
 COMMENT ON COLUMN students.password_reset_required IS 'TRUE if student must reset password on next login';
 
 COMMIT;

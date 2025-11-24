@@ -14,7 +14,8 @@ const PORT = process.env.PORT || 5000;
 // Middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:3000',
+  origin: true,
+  // origin: process.env.CLIENT_URL || 'http://localhost:3000',
   credentials: true // Enable cookies and authentication headers
 }));
 app.use(compression());
